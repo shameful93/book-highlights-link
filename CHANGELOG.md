@@ -1,5 +1,40 @@
 # Book Highlights Link 更新日志
 
+## 2026-05-08 - v2.1 PDF 转换支持
+
+### 新增功能
+
+**1. PDF 转 Markdown 模块** (`scripts/pdf_converter.py`)
+- 基于 pymupdf4llm 的高质量 PDF→Markdown 转换
+- 自动提取嵌入图片，转换为 Obsidian wikilink 格式
+- 支持跳过封面/扉页 (`--skip-pages`)
+- 与现有流水线完全兼容（Block ID、高亮匹配、格式化）
+
+**2. CLI 新增 `--pdf` 参数**
+- `--pdf`/`-p` 与原有 `--epub` 二选一
+- `--skip-pages` 用于跳过 PDF 前 N 页
+- 参数验证确保二选一且不能同时使用
+
+### 文件改动
+
+| 文件 | 操作 |
+|------|------|
+| `scripts/pdf_converter.py` | 新建 |
+| `scripts/__init__.py` | 添加导出 `convert_pdf_to_markdown` |
+| `scripts/main.py` | 添加 `--pdf`/`--skip-pages` 路由逻辑 |
+| `requirements.txt` | 添加 `pymupdf4llm` |
+| `SKILL.md` | 更新文档示例 |
+
+### 使用方式
+
+```bash
+# PDF 转换并链接高亮
+python scripts/main.py --pdf "book.pdf" --asset-id "XXX" --output-dir "./output"
+
+# 跳过前 4 页（封面/扉页）
+python scripts/main.py --pdf "book.pdf" --asset-id "XXX" --skip-pages 4
+```
+
 ## 2026-04-24 - v2.0 格式升级
 
 ### 新增功能

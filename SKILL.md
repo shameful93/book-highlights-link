@@ -1,6 +1,6 @@
 ---
 name: book-highlights-link
-description: One-click workflow to convert EPUB, extract Apple Books highlights, and create Obsidian wikilinks. Use when you want to link your Apple Books reading notes to converted book markdown files.
+description: One-click workflow to convert EPUB/PDF, extract Apple Books highlights, and create Obsidian wikilinks. Use when you want to link your Apple Books reading notes to converted book markdown files.
 ---
 
 # Book Highlights Linker
@@ -10,19 +10,37 @@ One-click workflow: Convert EPUB to Markdown with images, extract Apple Books hi
 ## When to Use This Skill
 
 Use when you want to:
-- Convert EPUB to Markdown with images extracted
+- Convert EPUB or PDF to Markdown with images extracted
 - Link Apple Books highlights to the converted book
 - Create stable paragraph-level links (not line numbers)
 - Build an integrated reading notes system in Obsidian
 
 ## Quick Start
 
-### One-Click Workflow
+### One-Click Workflow (EPUB)
 
 ```bash
 python scripts/main.py \
     --epub "/path/to/book.epub" \
     --asset-id "YOUR_ASSET_ID" \
+    --output-dir "/path/to/output"
+```
+
+### One-Click Workflow (PDF)
+
+```bash
+python scripts/main.py \
+    --pdf "/path/to/book.pdf" \
+    --asset-id "YOUR_ASSET_ID" \
+    --output-dir "/path/to/output"
+```
+
+PDF 文件也支持跳过封面/扉页（前几页可能是扫描图）：
+```bash
+python scripts/main.py \
+    --pdf "/path/to/book.pdf" \
+    --asset-id "YOUR_ASSET_ID" \
+    --skip-pages 4 \
     --output-dir "/path/to/output"
 ```
 
@@ -151,14 +169,20 @@ Apple Books databases require **Full Disk Access**:
 ### Dependencies
 
 ```bash
-pip install ebooklib beautifulsoup4 markdownify zhconv
+pip install ebooklib beautifulsoup4 markdownify zhconv pymupdf4llm
 ```
 
 ## CLI Reference
 
 ```bash
-# One-click workflow
+# One-click workflow (EPUB)
 python scripts/main.py --epub "book.epub" --asset-id "XXX" --output-dir "./output"
+
+# One-click workflow (PDF)
+python scripts/main.py --pdf "book.pdf" --asset-id "XXX" --output-dir "./output"
+
+# Skip PDF cover pages
+python scripts/main.py --pdf "book.pdf" --asset-id "XXX" --skip-pages 4
 
 # List books in Apple Books
 python scripts/main.py --list-books
@@ -180,16 +204,19 @@ For programmatic use:
 ```python
 from scripts import (
     convert_epub_to_markdown,
+    convert_pdf_to_markdown,
     extract_highlights_by_asset_id,
     add_block_ids_to_content,
     link_and_format_highlights
 )
 
-# Step 1: Convert EPUB
-epub_result = convert_epub_to_markdown(epub_path, output_dir)
+# Step 1: Convert EPUB or PDF
+# epub_result = convert_epub_to_markdown(epub_path, output_dir)
+# or:
+pdf_result = convert_pdf_to_markdown(pdf_path, output_dir, skip_pages=4)
 
 # Step 2: Add block IDs
-book_content, paragraphs = add_block_ids_to_content(epub_result['content'])
+book_content, paragraphs = add_block_ids_to_content(pdf_result['content'])
 
 # Step 3: Extract highlights
 highlights, metadata = extract_highlights_by_asset_id(asset_id)

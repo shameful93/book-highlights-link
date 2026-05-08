@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from epub_converter import convert_epub_to_markdown
+from pdf_converter import convert_pdf_to_markdown
 from apple_books_extractor import (
     extract_highlights_by_asset_id,
     list_all_books,
@@ -105,12 +106,14 @@ def search_book_alias_online(book_title: str, author: str) -> str:
 
 
 def process_book(
-    epub_path: str,
-    asset_id: str,
-    output_dir: str,
+    epub_path: str = None,
+    pdf_path: str = None,
+    asset_id: str = None,
+    output_dir: str = None,
     match_threshold: float = 0.75,
     dry_run: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
+    skip_pages: int = 0,
 ) -> dict:
     """
     Full pipeline: Convert EPUB, add block IDs, extract highlights, link.
@@ -135,30 +138,46 @@ def process_book(
         'stats': {}
     }
 
-    # Step 1: Convert EPUB to Markdown
-    print("\n📖 Step 1: 转换 EPUB...")
-    try:
-        epub_result = convert_epub_to_markdown(
-            epub_path,
-            str(output_dir),
-            images_subdir="images",
-            cleanup=True
-        )
-        print(f"  ✓ 提取 {epub_result['image_count']} 张图片")
-        print(f"  ✓ 书名: {epub_result['title']}")
-        print(f"  ✓ 作者: {epub_result['author']}")
-
-        result['images_dir'] = epub_result['images_dir']
-        result['stats']['image_count'] = epub_result['image_count']
-
-    except Exception as e:
-        print(f"  ✗ EPUB 转换失败: {e}")
+    # Step 1: Convert to Markdown
+    if epub_path:
+        print("\n📖 Step 1: 转换 EPUB...")
+        try:
+            book_result = convert_epub_to_markdown(
+                epub_path,
+                str(output_dir),
+                images_subdir="images",
+                cleanup=True
+            )
+        except Exception as e:
+            print(f"  ✗ EPUB 转换失败: {e}")
+            return result
+    elif pdf_path:
+        print("\n📖 Step 1: 转换 PDF...")
+        try:
+            book_result = convert_pdf_to_markdown(
+                pdf_path,
+                str(output_dir),
+                images_subdir="images",
+                skip_pages=skip_pages,
+            )
+        except Exception as e:
+            print(f"  ✗ PDF 转换失败: {e}")
+            return result
+    else:
+        print("错误: 未指定 EPUB 或 PDF 文件")
         return result
+
+    print(f"  ✓ 提取 {book_result['image_count']} 张图片")
+    print(f"  ✓ 书名: {book_result['title']}")
+    print(f"  ✓ 作者: {book_result['author']}")
+
+    result['images_dir'] = book_result['images_dir']
+    result['stats']['image_count'] = book_result['image_count']
 
     # Step 2: Add Block IDs
     print("\n🏷️  Step 2: 添加 Block ID...")
     try:
-        book_content, paragraphs = add_block_ids_to_content(epub_result['content'])
+        book_content, paragraphs = add_block_ids_to_content(book_result['content'])
         print(f"  ✓ 生成 {len(paragraphs)} 个段落 Block ID")
 
         result['stats']['paragraph_count'] = len(paragraphs)
@@ -188,11 +207,11 @@ def process_book(
     # Step 4: Link and Format
     print("\n🔗 Step 4: 链接高亮到书籍...")
     try:
-        book_filename = sanitize_filename(epub_result['title'])
+        book_filename = sanitize_filename(book_result['title'])
 
         # Search for book alias (non-blocking)
         print("  正在搜索书籍别名...")
-        aliasest = search_book_alias_online(epub_result['title'], epub_result['author'])
+        aliasest = search_book_alias_online(book_result['title'], book_result['author'])
         if aliasest:
             print(f"  ✓ 找到别名: {aliasest}")
         else:
@@ -201,8 +220,8 @@ def process_book(
         formatted_highlights, match_stats = link_and_format_highlights(
             highlights=highlights,
             paragraphs=paragraphs,
-            book_title=epub_result['title'],
-            book_author=epub_result['author'],
+            book_title=book_result['title'],
+            book_author=book_result['author'],
             book_filename=book_filename,
             threshold=match_threshold,
             aliasest=aliasest
@@ -251,12 +270,18 @@ def process_book(
 
 def main():
     parser = argparse.ArgumentParser(
-        description='One-click: Convert EPUB, add block IDs, extract highlights, link',
+        description='One-click: Convert EPUB/PDF, add block IDs, extract highlights, link',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  # 转换书籍并链接高亮
+  # 转换 EPUB 并链接高亮 (原有方式)
   python scripts/main.py --epub "book.epub" --asset-id "XXX" --output-dir "./output"
+
+  # 转换 PDF 并链接高亮 (新增方式)
+  python scripts/main.py --pdf "book.pdf" --asset-id "XXX" --output-dir "./output"
+
+  # 跳过 PDF 封面/扉页 (前 4 页)
+  python scripts/main.py --pdf "book.pdf" --asset-id "XXX" --skip-pages 4
 
   # 列出 Apple Books 中的书籍
   python scripts/main.py --list-books
@@ -266,13 +291,16 @@ def main():
         """
     )
 
-    parser.add_argument('--epub', '-e', help='EPUB 文件路径')
+    parser.add_argument('--epub', '-e', help='EPUB 文件路径 (与 --pdf 二选一)')
+    parser.add_argument('--pdf', '-p', help='PDF 文件路径 (与 --epub 二选一)')
     parser.add_argument('--asset-id', '-a', help='Apple Books Asset ID')
     parser.add_argument('--output-dir', '-o', default='./output', help='输出目录')
     parser.add_argument('--threshold', '-t', type=float, default=0.75,
                         help='文本匹配阈值 (默认 0.75)')
     parser.add_argument('--dry-run', '-n', action='store_true', help='预览模式')
     parser.add_argument('--verbose', '-v', action='store_true', help='详细输出')
+    parser.add_argument('--skip-pages', type=int, default=0,
+                        help='跳过 PDF 前 N 页 (封面/扉页)')
     parser.add_argument('--list-books', '-l', action='store_true',
                         help='列出 Apple Books 中的书籍')
 
@@ -313,29 +341,47 @@ def main():
             return 1
 
     # Process book mode
-    if not args.epub or not args.asset_id:
-        print("错误: 需要指定 --epub 和 --asset-id")
+    if not args.epub and not args.pdf:
+        print("错误: 需要指定 --epub 或 --pdf")
         print("使用 --list-books 查看可用书籍")
         return 1
 
-    if not os.path.exists(args.epub):
+    if args.epub and args.pdf:
+        print("错误: --epub 和 --pdf 不能同时使用")
+        return 1
+
+    if not args.asset_id:
+        print("错误: 需要指定 --asset-id")
+        return 1
+
+    if args.epub and not os.path.exists(args.epub):
         print(f"错误: EPUB 文件不存在: {args.epub}")
+        return 1
+
+    if args.pdf and not os.path.exists(args.pdf):
+        print(f"错误: PDF 文件不存在: {args.pdf}")
         return 1
 
     print("=" * 60)
     print("Book Highlights Link - 一键处理")
     print("=" * 60)
-    print(f"\nEPUB: {args.epub}")
+    input_path = args.epub or args.pdf
+    fmt = "EPUB" if args.epub else "PDF"
+    print(f"\n{fmt}: {input_path}")
     print(f"Asset ID: {args.asset_id}")
     print(f"输出目录: {args.output_dir}")
+    if args.skip_pages:
+        print(f"跳过前 {args.skip_pages} 页")
 
     result = process_book(
         epub_path=args.epub,
+        pdf_path=args.pdf,
         asset_id=args.asset_id,
         output_dir=args.output_dir,
         match_threshold=args.threshold,
         dry_run=args.dry_run,
-        verbose=args.verbose
+        verbose=args.verbose,
+        skip_pages=args.skip_pages,
     )
 
     print("\n" + "=" * 60)

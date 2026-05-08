@@ -2,3 +2,4 @@ ebooklib
 beautifulsoup4
 markdownify
 zhconv
+pymupdf4llm
